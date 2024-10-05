@@ -1,0 +1,548 @@
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+using namespace std;
+
+// -------------------- Массив --------------------
+struct Array {
+    int data[100];
+    int size;
+    string filename;
+};
+
+void AWriteToFile(const Array& arr) {
+    ofstream file(arr.filename);
+    for (int i = 0; i < arr.size; i++) {
+        file << arr.data[i] << " ";
+    }
+    file.close();
+}
+
+void MPUSH(Array& arr, int value) {
+    if (arr.size < 100) {
+        arr.data[arr.size++] = value;
+        AWriteToFile(arr); // Сохраняем изменения
+    } else {
+        cout << "Array is full!" << endl;
+    }
+}
+
+void MDEL(Array& arr, int index) {
+    if (index >= 0 && index < arr.size) {
+        for (int i = index; i < arr.size - 1; ++i) {
+            arr.data[i] = arr.data[i + 1];
+        }
+        --arr.size;
+        AWriteToFile(arr); // Сохраняем изменения
+    } else {
+        cout << "Invalid index!" << endl;
+    }
+}
+
+int MGET(const Array& arr, int index) {
+    if (index >= 0 && index < arr.size) {
+        return arr.data[index];
+    } else {
+        cout << "Invalid index!" << endl;
+        return -1; // Возвращаем -1 как индикатор ошибки
+    }
+}
+
+void APrint(const Array& arr) {
+    for (int i = 0; i < arr.size; ++i) {
+        cout << arr.data[i] << " ";
+    }
+    cout << endl;
+}
+
+void AReadFromFile(Array& arr) {
+    ifstream file(arr.filename);
+    arr.size = 0; // Сбрасываем размер
+    while (file >> arr.data[arr.size] && arr.size < 100) {
+        ++arr.size;
+    }
+    file.close();
+}
+
+// -------------------- Односвязный список --------------------
+struct Node {
+    int value;
+    Node* next;
+};
+
+struct SinglyLinkedList {
+    Node* head;
+    string filename;
+};
+
+void LWriteToFile(const SinglyLinkedList& list) {
+    ofstream file(list.filename);
+    Node* current = list.head;
+    while (current != nullptr) {
+        file << current->value << " ";
+        current = current->next;
+    }
+    file.close();
+}
+
+void LPUSH(SinglyLinkedList& list, int value) {
+    Node* newNode = new Node{value, list.head};
+    list.head = newNode;
+    LWriteToFile(list); // Сохраняем изменения
+}
+
+void LDEL(SinglyLinkedList& list, int value) {
+    Node* current = list.head;
+    Node* prev = nullptr;
+    while (current != nullptr) {
+        if (current->value == value) {
+            if (prev == nullptr) {
+                list.head = current->next;
+            } else {
+                prev->next = current->next;
+            }
+            delete current;
+            LWriteToFile(list); // Сохраняем изменения
+            return;
+        }
+        prev = current;
+        current = current->next;
+    }
+}
+
+void LGET(const SinglyLinkedList& list) {
+    Node* current = list.head;
+    while (current != nullptr) {
+        cout << current->value << " ";
+        current = current->next;
+    }
+    cout << endl;
+}
+
+void LReadFromFile(SinglyLinkedList& list) {
+    ifstream file(list.filename);
+    int value;
+    list.head = nullptr; // Очищаем список
+    while (file >> value) {
+        LPUSH(list, value);
+    }
+    file.close();
+}
+
+// -------------------- Двусвязный список --------------------
+struct DNode {
+    int value;
+    DNode* prev;
+    DNode* next;
+};
+
+struct DoublyLinkedList {
+    DNode* head;
+    DNode* tail;
+    string filename;
+};
+
+void DWriteToFile(const DoublyLinkedList& list); // Объявление функции перед ее использованием
+
+void DPUSH(DoublyLinkedList& list, int value) {
+    DNode* newNode = new DNode{value, nullptr, list.head};
+    if (list.head != nullptr) {
+        list.head->prev = newNode;
+    }
+    list.head = newNode;
+    if (list.tail == nullptr) {
+        list.tail = newNode;
+    }
+    DWriteToFile(list); // Сохраняем изменения
+}
+
+void DDEL(DoublyLinkedList& list, int value) {
+    DNode* current = list.head;
+    while (current != nullptr) {
+        if (current->value == value) {
+            if (current->prev != nullptr) {
+                current->prev->next = current->next;
+            } else {
+                list.head = current->next;
+            }
+            if (current->next != nullptr) {
+                current->next->prev = current->prev;
+            } else {
+                list.tail = current->prev;
+            }
+            delete current;
+            DWriteToFile(list); // Сохраняем изменения
+            return;
+        }
+        current = current->next;
+    }
+    cout << "Value not found!" << endl;
+}
+
+void DGET(const DoublyLinkedList& list) {
+    DNode* current = list.head;
+    while (current != nullptr) {
+        cout << current->value << " ";
+        current = current->next;
+    }
+    cout << endl;
+}
+
+void DWriteToFile(const DoublyLinkedList& list) {
+    ofstream file(list.filename);
+    DNode* current = list.head;
+    while (current != nullptr) {
+        file << current->value << " ";
+        current = current->next;
+    }
+    file.close();
+}
+
+void DReadFromFile(DoublyLinkedList& list) {
+    ifstream file(list.filename);
+    int value;
+    list.head = nullptr; // Очищаем список
+    list.tail = nullptr;
+    while (file >> value) {
+        DPUSH(list, value);
+    }
+    file.close();
+}
+
+// -------------------- Очередь --------------------
+struct Queue {
+    int q[100]; // Максимальный размер очереди
+    int front, rear;
+    string filename;
+};
+
+void QWriteToFile(const Queue& q); // Объявление функции перед ее использованием
+
+void QPUSH(Queue& q, int value) {
+    if (q.rear < 100) {
+        q.q[q.rear++] = value;
+        QWriteToFile(q); // Сохраняем изменения
+    } else {
+        cout << "Queue is full!" << endl;
+    }
+}
+
+void QPOP(Queue& q) {
+    if (q.front < q.rear) {
+        ++q.front;
+        QWriteToFile(q); // Сохраняем изменения
+    } else {
+        cout << "Queue is empty!" << endl;
+    }
+}
+
+void QPRINT(const Queue& q) {
+    for (int i = q.front; i < q.rear; ++i) {
+        cout << q.q[i] << " ";
+    }
+    cout << endl;
+}
+
+void QWriteToFile(const Queue& q) {
+    ofstream file(q.filename);
+    for (int i = q.front; i < q.rear; ++i) {
+        file << q.q[i] << " ";
+    }
+    file.close();
+}
+
+void QReadFromFile(Queue& q) {
+    ifstream file(q.filename);
+    int value;
+    q.front = 0; q.rear = 0; // Сбрасываем очередь
+    while (file >> value && q.rear < 100) {
+        q.q[q.rear++] = value;
+    }
+    file.close();
+}
+
+// -------------------- Стек --------------------
+struct Stack {
+    int s[100]; // Максимальный размер стека
+    int top;
+    string filename;
+};
+
+void SWriteToFile(const Stack& s); // Объявление функции перед ее использованием
+
+void SPUSH(Stack& s, int value) {
+    if (s.top < 99) {
+        s.s[++s.top] = value;
+        SWriteToFile(s); // Сохраняем изменения
+    } else {
+        cout << "Stack is full!" << endl;
+    }
+}
+
+void SPOP(Stack& s) {
+    if (s.top >= 0) {
+        --s.top;
+        SWriteToFile(s); // Сохраняем изменения
+    } else {
+        cout << "Stack is empty!" << endl;
+    }
+}
+
+void SPRINT(const Stack& s) {
+    for (int i = 0; i <= s.top; ++i) {
+        cout << s.s[i] << " ";
+    }
+    cout << endl;
+}
+
+void SWriteToFile(const Stack& s) {
+    ofstream file(s.filename);
+    for (int i = 0; i <= s.top; ++i) {
+        file << s.s[i] << " ";
+    }
+    file.close();
+}
+
+void SReadFromFile(Stack& s) {
+    ifstream file(s.filename);
+    s.top = -1; // Сбрасываем стек
+    int value;
+    while (file >> value && s.top < 99) {
+        s.s[++s.top] = value;
+    }
+    file.close();
+}
+
+// -------------------- Хеш-таблица --------------------
+struct HashTable {
+    int table[100];
+    int size;
+    string filename;
+};
+
+void HTWriteToFile(const HashTable& ht) {
+    ofstream file(ht.filename);
+    for (int i = 0; i < ht.size; i++) {
+        file << ht.table[i] << " ";
+    }
+    file.close();
+}
+
+void HTINSERT(HashTable& ht, int value) {
+    if (ht.size < 100) {
+        int index = value % 100; // Простое хеширование
+        while (ht.table[index] != 0) { // Найти пустое место
+            index = (index + 1) % 100; // Линейное пробирование
+        }
+        ht.table[index] = value;
+        ht.size++;
+        HTWriteToFile(ht); // Сохраняем изменения
+    } else {
+        cout << "Hash table is full!" << endl;
+    }
+}
+
+void HTDELETE(HashTable& ht, int value) {
+    int index = value % 100; // Применяем хеш-функцию
+    while (ht.table[index] != 0) {
+        if (ht.table[index] == value) {
+            ht.table[index] = 0; // Удаляем значение
+            ht.size--;
+            HTWriteToFile(ht); // Сохраняем изменения
+            return;
+        }
+        index = (index + 1) % 100; // Линейное пробирование
+    }
+    cout << "Value not found!" << endl;
+}
+
+void HTPRINT(const HashTable& ht) {
+    for (int i = 0; i < 100; i++) {
+        if (ht.table[i] != 0) {
+            cout << ht.table[i] << " ";
+        }
+    }
+    cout << endl;
+}
+
+void HTReadFromFile(HashTable& ht) {
+    ifstream file(ht.filename);
+    ht.size = 0; // Сбрасываем размер
+    for (int i = 0; i < 100; i++) {
+        ht.table[i] = 0; // Очищаем таблицу
+    }
+    int value;
+    while (file >> value) {
+        HTINSERT(ht, value);
+    }
+    file.close();
+}
+
+// -------------------- Дерево поиска --------------------
+struct BSTNode {
+    int value;
+    BSTNode* left;
+    BSTNode* right;
+};
+
+struct BST {
+    BSTNode* root;
+    string filename;
+};
+
+void BSTWriteToFile(BSTNode* node, ofstream& file) {
+    if (node == nullptr) return;
+    BSTWriteToFile(node->left, file);
+    file << node->value << " ";
+    BSTWriteToFile(node->right, file);
+}
+
+void BSTINSERT(BST& bst, int value) {
+    BSTNode* newNode = new BSTNode{value, nullptr, nullptr};
+    if (bst.root == nullptr) {
+        bst.root = newNode;
+    } else {
+        BSTNode* current = bst.root;
+        BSTNode* parent = nullptr;
+        while (true) {
+            parent = current;
+            if (value < current->value) {
+                current = current->left;
+                if (current == nullptr) {
+                    parent->left = newNode;
+                    break;
+                }
+            } else {
+                current = current->right;
+                if (current == nullptr) {
+                    parent->right = newNode;
+                    break;
+                }
+            }
+        }
+    }
+    ofstream file(bst.filename);
+    BSTWriteToFile(bst.root, file); // Сохраняем изменения
+    file.close();
+}
+
+void BSTDELETE(BST& bst, int value) {
+    // Реализовать удаление узла
+}
+
+void BSTPRINT(BSTNode* node) {
+    if (node == nullptr) return;
+    BSTPRINT(node->left);
+    cout << node->value << " ";
+    BSTPRINT(node->right);
+}
+int main(int argc, char* argv[]) {
+    if (argc < 5 || string(argv[1]) != "--file" || string(argv[3]) != "--query") {
+        cerr << "Использование: ./dbms --file <filename> --query '<command>'" << endl;
+        return 1;
+    }
+
+    string filename = argv[2];
+    string query = argv[4];
+
+    // Создаем структуры данных
+    Array arr = {{}, 0, filename};
+    SinglyLinkedList list = {nullptr, filename};
+    DoublyLinkedList dlist = {nullptr, nullptr, filename}; // Двусвязный список
+    Queue q = {{}, 0, 0, filename};
+    Stack s = {{}, -1, filename};
+    HashTable ht = {{}, 0, filename}; // Создаем хэш-таблицу
+    BST tree = {nullptr, filename}; // Дерево поиска
+
+    // Разбор команды
+    istringstream iss(query);
+    string command;
+    iss >> command;
+
+    // Обработчик команд для всех структур
+    if (command == "MPUSH") {
+        int value;
+        iss >> value; // Изменено на int
+        MPUSH(arr, value);
+    } else if (command == "MDEL") {
+        int index;
+        iss >> index;
+        MDEL(arr, index);
+    } else if (command == "MGET") {
+        int index;
+        iss >> index;
+        cout << "Элемент: " << MGET(arr, index) << endl;
+    } else if (command == "APrint") {
+        APrint(arr);
+    } else if (command == "AReadFromFile") {
+        AReadFromFile(arr);
+    } else if (command == "LPUSH") {
+        int value; // Изменено на int
+        iss >> value;
+        LPUSH(list, value);
+    } else if (command == "LDEL") {
+        int value; // Изменено на int
+        iss >> value;
+        LDEL(list, value);
+    } else if (command == "LGET") {
+        LGET(list);
+    } else if (command == "LReadFromFile") {
+        LReadFromFile(list);
+    } else if (command == "DPUSH") {
+        int value; // Изменено на int
+        iss >> value;
+        DPUSH(dlist, value);
+    } else if (command == "DDEL") {
+        int value; // Изменено на int
+        iss >> value;
+        DDEL(dlist, value);
+    } else if (command == "DGET") {
+        DGET(dlist);
+    } else if (command == "DReadFromFile") {
+        DReadFromFile(dlist);
+    } else if (command == "QPUSH") {
+        int value; // Изменено на int
+        iss >> value;
+        QPUSH(q, value);
+    } else if (command == "QPOP") {
+        QPOP(q);
+    } else if (command == "QPRINT") {
+        QPRINT(q);
+    } else if (command == "QReadFromFile") {
+        QReadFromFile(q);
+    } else if (command == "SPUSH") {
+        int value; // Изменено на int
+        iss >> value;
+        SPUSH(s, value);
+    } else if (command == "SPOP") {
+        SPOP(s);
+    } else if (command == "SPRINT") {
+        SPRINT(s);
+    } else if (command == "SReadFromFile") {
+        SReadFromFile(s);
+    } else if (command == "HSET") {
+        int value; // Изменено на int
+        iss >> value;
+        HTINSERT(ht, value); // Замените на соответствующий метод
+    } else if (command == "HDEL") {
+        int value; // Изменено на int
+        iss >> value;
+        HTDELETE(ht, value);
+    } else if (command == "HPrint") {
+        HTPRINT(ht);
+    } else if (command == "TINSERT") {
+        int value; // Изменено на int
+        iss >> value;
+        BSTINSERT(tree, value); // Исправлено для соответствия типам
+    } else if (command == "TDELETE") {
+        int value; // Изменено на int
+        iss >> value;
+        BSTDELETE(tree, value); // Реализовать функцию удаления
+    } else if (command == "TGET") {
+        BSTPRINT(tree.root); // Изменено для соответствия типам
+    } else {
+        cout << "Неизвестная команда!" << endl;
+    }
+    return 0;
+}
