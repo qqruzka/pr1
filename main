@@ -1,548 +1,346 @@
 #include <iostream>
 #include <fstream>
-#include <sstream>
-#include <vector>
+#include <direct.h> // For _mkdir
+#include "json.hpp"
+
 using namespace std;
+using json = nlohmann::json;
 
-// -------------------- Массив --------------------
-struct Array {
-    int data[100];
-    int size;
-    string filename;
-};
-
-void AWriteToFile(const Array& arr) {
-    ofstream file(arr.filename);
-    for (int i = 0; i < arr.size; i++) {
-        file << arr.data[i] << " ";
-    }
-    file.close();
-}
-
-void MPUSH(Array& arr, int value) {
-    if (arr.size < 100) {
-        arr.data[arr.size++] = value;
-        AWriteToFile(arr); // Сохраняем изменения
-    } else {
-        cout << "Array is full!" << endl;
-    }
-}
-
-void MDEL(Array& arr, int index) {
-    if (index >= 0 && index < arr.size) {
-        for (int i = index; i < arr.size - 1; ++i) {
-            arr.data[i] = arr.data[i + 1];
-        }
-        --arr.size;
-        AWriteToFile(arr); // Сохраняем изменения
-    } else {
-        cout << "Invalid index!" << endl;
-    }
-}
-
-int MGET(const Array& arr, int index) {
-    if (index >= 0 && index < arr.size) {
-        return arr.data[index];
-    } else {
-        cout << "Invalid index!" << endl;
-        return -1; // Возвращаем -1 как индикатор ошибки
-    }
-}
-
-void APrint(const Array& arr) {
-    for (int i = 0; i < arr.size; ++i) {
-        cout << arr.data[i] << " ";
-    }
-    cout << endl;
-}
-
-void AReadFromFile(Array& arr) {
-    ifstream file(arr.filename);
-    arr.size = 0; // Сбрасываем размер
-    while (file >> arr.data[arr.size] && arr.size < 100) {
-        ++arr.size;
-    }
-    file.close();
-}
-
-// -------------------- Односвязный список --------------------
 struct Node {
-    int value;
+    string name;
+    json data;
     Node* next;
+
+    Node(const string& name) : name(name), next(nullptr) {}
 };
 
-struct SinglyLinkedList {
+struct Database {
+    string filename; 
+    string schema_name;
     Node* head;
-    string filename;
-};
+    int current_pk; // Для хранения текущего значения PK
 
-void LWriteToFile(const SinglyLinkedList& list) {
-    ofstream file(list.filename);
-    Node* current = list.head;
-    while (current != nullptr) {
-        file << current->value << " ";
-        current = current->next;
+    Database() : head(nullptr), current_pk(0) {}
+
+    ~Database() {
+        while (head) {
+            Node* temp = head;
+            head = head->next;
+            delete temp;
+        }
     }
-    file.close();
-}
 
-void LPUSH(SinglyLinkedList& list, int value) {
-    Node* newNode = new Node{value, list.head};
-    list.head = newNode;
-    LWriteToFile(list); // Сохраняем изменения
-}
-
-void LDEL(SinglyLinkedList& list, int value) {
-    Node* current = list.head;
-    Node* prev = nullptr;
-    while (current != nullptr) {
-        if (current->value == value) {
-            if (prev == nullptr) {
-                list.head = current->next;
-            } else {
-                prev->next = current->next;
+    void loadSchema(const string& schema_file) {
+        ifstream file(schema_file);
+        if (file) {
+            json schema;
+            file >> schema;
+            schema_name = schema["name"];
+            createDirectories(schema["structure"]);
+            for (const auto& table : schema["structure"].items()) {
+                addNode(table.key());
             }
-            delete current;
-            LWriteToFile(list); // Сохраняем изменения
-            return;
+        } else {
+            cerr << "Could not open schema file." << endl;
         }
-        prev = current;
-        current = current->next;
     }
-}
 
-void LGET(const SinglyLinkedList& list) {
-    Node* current = list.head;
-    while (current != nullptr) {
-        cout << current->value << " ";
-        current = current->next;
-    }
-    cout << endl;
-}
-
-void LReadFromFile(SinglyLinkedList& list) {
-    ifstream file(list.filename);
-    int value;
-    list.head = nullptr; // Очищаем список
-    while (file >> value) {
-        LPUSH(list, value);
-    }
-    file.close();
-}
-
-// -------------------- Двусвязный список --------------------
-struct DNode {
-    int value;
-    DNode* prev;
-    DNode* next;
-};
-
-struct DoublyLinkedList {
-    DNode* head;
-    DNode* tail;
-    string filename;
-};
-
-void DWriteToFile(const DoublyLinkedList& list); // Объявление функции перед ее использованием
-
-void DPUSH(DoublyLinkedList& list, int value) {
-    DNode* newNode = new DNode{value, nullptr, list.head};
-    if (list.head != nullptr) {
-        list.head->prev = newNode;
-    }
-    list.head = newNode;
-    if (list.tail == nullptr) {
-        list.tail = newNode;
-    }
-    DWriteToFile(list); // Сохраняем изменения
-}
-
-void DDEL(DoublyLinkedList& list, int value) {
-    DNode* current = list.head;
-    while (current != nullptr) {
-        if (current->value == value) {
-            if (current->prev != nullptr) {
-                current->prev->next = current->next;
+    void initializePrimaryKey(const string& table) {
+        string pk_filename = schema_name + "\\" + table + "\\table_pk_sequence.txt";
+        ifstream pk_file(pk_filename);
+        
+        if (pk_file) {
+            pk_file >> current_pk;
+        } else {
+            ofstream pk_file_out(pk_filename);
+            if (pk_file_out) {
+                pk_file_out << 0;
             } else {
-                list.head = current->next;
+                cerr << "Could not create primary key file: " << pk_filename << endl;
             }
-            if (current->next != nullptr) {
-                current->next->prev = current->prev;
-            } else {
-                list.tail = current->prev;
-            }
-            delete current;
-            DWriteToFile(list); // Сохраняем изменения
-            return;
-        }
-        current = current->next;
-    }
-    cout << "Value not found!" << endl;
-}
-
-void DGET(const DoublyLinkedList& list) {
-    DNode* current = list.head;
-    while (current != nullptr) {
-        cout << current->value << " ";
-        current = current->next;
-    }
-    cout << endl;
-}
-
-void DWriteToFile(const DoublyLinkedList& list) {
-    ofstream file(list.filename);
-    DNode* current = list.head;
-    while (current != nullptr) {
-        file << current->value << " ";
-        current = current->next;
-    }
-    file.close();
-}
-
-void DReadFromFile(DoublyLinkedList& list) {
-    ifstream file(list.filename);
-    int value;
-    list.head = nullptr; // Очищаем список
-    list.tail = nullptr;
-    while (file >> value) {
-        DPUSH(list, value);
-    }
-    file.close();
-}
-
-// -------------------- Очередь --------------------
-struct Queue {
-    int q[100]; // Максимальный размер очереди
-    int front, rear;
-    string filename;
-};
-
-void QWriteToFile(const Queue& q); // Объявление функции перед ее использованием
-
-void QPUSH(Queue& q, int value) {
-    if (q.rear < 100) {
-        q.q[q.rear++] = value;
-        QWriteToFile(q); // Сохраняем изменения
-    } else {
-        cout << "Queue is full!" << endl;
-    }
-}
-
-void QPOP(Queue& q) {
-    if (q.front < q.rear) {
-        ++q.front;
-        QWriteToFile(q); // Сохраняем изменения
-    } else {
-        cout << "Queue is empty!" << endl;
-    }
-}
-
-void QPRINT(const Queue& q) {
-    for (int i = q.front; i < q.rear; ++i) {
-        cout << q.q[i] << " ";
-    }
-    cout << endl;
-}
-
-void QWriteToFile(const Queue& q) {
-    ofstream file(q.filename);
-    for (int i = q.front; i < q.rear; ++i) {
-        file << q.q[i] << " ";
-    }
-    file.close();
-}
-
-void QReadFromFile(Queue& q) {
-    ifstream file(q.filename);
-    int value;
-    q.front = 0; q.rear = 0; // Сбрасываем очередь
-    while (file >> value && q.rear < 100) {
-        q.q[q.rear++] = value;
-    }
-    file.close();
-}
-
-// -------------------- Стек --------------------
-struct Stack {
-    int s[100]; // Максимальный размер стека
-    int top;
-    string filename;
-};
-
-void SWriteToFile(const Stack& s); // Объявление функции перед ее использованием
-
-void SPUSH(Stack& s, int value) {
-    if (s.top < 99) {
-        s.s[++s.top] = value;
-        SWriteToFile(s); // Сохраняем изменения
-    } else {
-        cout << "Stack is full!" << endl;
-    }
-}
-
-void SPOP(Stack& s) {
-    if (s.top >= 0) {
-        --s.top;
-        SWriteToFile(s); // Сохраняем изменения
-    } else {
-        cout << "Stack is empty!" << endl;
-    }
-}
-
-void SPRINT(const Stack& s) {
-    for (int i = 0; i <= s.top; ++i) {
-        cout << s.s[i] << " ";
-    }
-    cout << endl;
-}
-
-void SWriteToFile(const Stack& s) {
-    ofstream file(s.filename);
-    for (int i = 0; i <= s.top; ++i) {
-        file << s.s[i] << " ";
-    }
-    file.close();
-}
-
-void SReadFromFile(Stack& s) {
-    ifstream file(s.filename);
-    s.top = -1; // Сбрасываем стек
-    int value;
-    while (file >> value && s.top < 99) {
-        s.s[++s.top] = value;
-    }
-    file.close();
-}
-
-// -------------------- Хеш-таблица --------------------
-struct HashTable {
-    int table[100];
-    int size;
-    string filename;
-};
-
-void HTWriteToFile(const HashTable& ht) {
-    ofstream file(ht.filename);
-    for (int i = 0; i < ht.size; i++) {
-        file << ht.table[i] << " ";
-    }
-    file.close();
-}
-
-void HTINSERT(HashTable& ht, int value) {
-    if (ht.size < 100) {
-        int index = value % 100; // Простое хеширование
-        while (ht.table[index] != 0) { // Найти пустое место
-            index = (index + 1) % 100; // Линейное пробирование
-        }
-        ht.table[index] = value;
-        ht.size++;
-        HTWriteToFile(ht); // Сохраняем изменения
-    } else {
-        cout << "Hash table is full!" << endl;
-    }
-}
-
-void HTDELETE(HashTable& ht, int value) {
-    int index = value % 100; // Применяем хеш-функцию
-    while (ht.table[index] != 0) {
-        if (ht.table[index] == value) {
-            ht.table[index] = 0; // Удаляем значение
-            ht.size--;
-            HTWriteToFile(ht); // Сохраняем изменения
-            return;
-        }
-        index = (index + 1) % 100; // Линейное пробирование
-    }
-    cout << "Value not found!" << endl;
-}
-
-void HTPRINT(const HashTable& ht) {
-    for (int i = 0; i < 100; i++) {
-        if (ht.table[i] != 0) {
-            cout << ht.table[i] << " ";
         }
     }
-    cout << endl;
-}
 
-void HTReadFromFile(HashTable& ht) {
-    ifstream file(ht.filename);
-    ht.size = 0; // Сбрасываем размер
-    for (int i = 0; i < 100; i++) {
-        ht.table[i] = 0; // Очищаем таблицу
+    void updatePrimaryKey(const string& table) {
+        string pk_filename = schema_name + "\\" + table + "\\table_pk_sequence.txt";
+        ifstream pk_file(pk_filename);
+        
+        int pk_value = 0;
+        if (pk_file) {
+            pk_file >> pk_value;
+        }
+        pk_file.close();
+
+        pk_value++;
+        current_pk = pk_value;
+
+        cout << "Updating PK file: " << pk_filename << " with new value: " << current_pk << endl;
+        
+        ofstream pk_file_out(pk_filename);
+        if (pk_file_out) {
+            pk_file_out << current_pk;
+        } else {
+            cerr << "Could not open primary key file for updating: " << pk_filename << endl;
+        }
     }
-    int value;
-    while (file >> value) {
-        HTINSERT(ht, value);
-    }
-    file.close();
-}
 
-// -------------------- Дерево поиска --------------------
-struct BSTNode {
-    int value;
-    BSTNode* left;
-    BSTNode* right;
-};
+    void createDirectories(const json& structure) {
+        _mkdir(schema_name.c_str());
 
-struct BST {
-    BSTNode* root;
-    string filename;
-};
+        for (const auto& table : structure.items()) {
+            string table_name = table.key();
+            string table_path = schema_name + "\\" + table_name;
 
-void BSTWriteToFile(BSTNode* node, ofstream& file) {
-    if (node == nullptr) return;
-    BSTWriteToFile(node->left, file);
-    file << node->value << " ";
-    BSTWriteToFile(node->right, file);
-}
+            _mkdir(table_path.c_str());
+            filename = table_path + "\\1.csv"; 
 
-void BSTINSERT(BST& bst, int value) {
-    BSTNode* newNode = new BSTNode{value, nullptr, nullptr};
-    if (bst.root == nullptr) {
-        bst.root = newNode;
-    } else {
-        BSTNode* current = bst.root;
-        BSTNode* parent = nullptr;
-        while (true) {
-            parent = current;
-            if (value < current->value) {
-                current = current->left;
-                if (current == nullptr) {
-                    parent->left = newNode;
-                    break;
-                }
-            } else {
-                current = current->right;
-                if (current == nullptr) {
-                    parent->right = newNode;
-                    break;
+            ifstream check_file(filename);
+            if (!check_file) {
+                ofstream file(filename);
+                if (file.is_open()) {
+                    auto& columns = table.value();
+                    for (size_t i = 0; i < columns.size(); ++i) {
+                        file << "| " << setw(10) << left << columns[i].get<string>() << " ";
+                    }
+                    file << "|\n"; 
+                    file.close();
                 }
             }
+
+            initializePrimaryKey(table_name);
         }
     }
-    ofstream file(bst.filename);
-    BSTWriteToFile(bst.root, file); // Сохраняем изменения
-    file.close();
-}
 
-void BSTDELETE(BST& bst, int value) {
-    // Реализовать удаление узла
-}
-
-void BSTPRINT(BSTNode* node) {
-    if (node == nullptr) return;
-    BSTPRINT(node->left);
-    cout << node->value << " ";
-    BSTPRINT(node->right);
-}
-int main(int argc, char* argv[]) {
-    if (argc < 5 || string(argv[1]) != "--file" || string(argv[3]) != "--query") {
-        cerr << "Использование: ./dbms --file <filename> --query '<command>'" << endl;
-        return 1;
+    void addNode(const string& table_name) {
+        Node* new_node = new Node(table_name);
+        new_node->next = head;
+        head = new_node;
     }
 
-    string filename = argv[2];
-    string query = argv[4];
+    Node* findNode(const string& table_name) {
+        Node* current = head;
+        while (current) {
+            if (current->name == table_name) {
+                return current;
+            }
+            current = current->next;
+        }
+        return nullptr;
+    }
 
-    // Создаем структуры данных
-    Array arr = {{}, 0, filename};
-    SinglyLinkedList list = {nullptr, filename};
-    DoublyLinkedList dlist = {nullptr, nullptr, filename}; // Двусвязный список
-    Queue q = {{}, 0, 0, filename};
-    Stack s = {{}, -1, filename};
-    HashTable ht = {{}, 0, filename}; // Создаем хэш-таблицу
-    BST tree = {nullptr, filename}; // Дерево поиска
+    void load() {
+        Node* current = head;
+        while (current) {
+            filename = schema_name + "\\" + current->name + "\\1.csv"; 
+            ifstream file(filename);
+            if (file) {
+                string line;
+                bool is_header = true;
+                while (getline(file, line)) {
+                    line.erase(0, line.find_first_not_of(" \t"));
+                    line.erase(line.find_last_not_of(" \t") + 1);
 
-    // Разбор команды
+                    if (is_header) {
+                        is_header = false;
+                        continue;
+                    }
+
+                    istringstream iss(line);
+                    string fields[4]; // Заменяем вектор на массив
+                    int field_count = 0;
+
+                    while (getline(iss, fields[field_count], '|') && field_count < 4) {
+                        fields[field_count].erase(0, fields[field_count].find_first_not_of(" \t"));
+                        fields[field_count].erase(fields[field_count].find_last_not_of(" \t") + 1);
+                        field_count++;
+                    }
+
+                    if (field_count == 4) {
+                        json entry;
+                        entry["name"] = fields[0];
+                        entry["age"] = fields[1];
+                        entry["adress"] = fields[2];
+                        entry["number"] = fields[3];
+
+                        current->data.push_back(entry);
+                    } else {
+                        cout << "Invalid or empty data found: " << line << endl;
+                    }
+                }
+            } else {
+                cerr << "Could not open data file: " << filename << endl;
+            }
+            current = current->next;
+        }
+    }
+
+    void select(const string& column, const string& table, const pair<string, string>* filters, int filter_count) {
+        Node* table_node = findNode(table);
+        if (table_node) {
+            cout << "Data from " << column << " in " << table << ":\n";
+            for (const auto& entry : table_node->data) {
+                bool valid_row = true;
+
+                for (int i = 0; i < filter_count; ++i) {
+                    const string& filter_column = filters[i].first;
+                    const string& filter_value = filters[i].second;
+
+                    if (entry.contains(filter_column) && entry[filter_column].get<string>() != filter_value) {
+                        valid_row = false;
+                        break;
+                    }
+                }
+
+                if (valid_row && entry.contains(column)) {
+                    cout << entry[column].get<string>() << endl;
+                }
+            }
+        } else {
+            cout << "Table not found: " << table << endl;
+        }
+    }
+
+    void saveSingleEntryToCSV(const string& table, const json& entry) {
+        filename = schema_name + "\\" + table + "\\1.csv"; 
+        ofstream file(filename, ios::app);
+        if (file) {
+            file << "| " << setw(10) << left << entry["name"].get<string>() << "| "  
+                 << setw(10) << left << entry["age"] << "| "
+                 << setw(10) << left << entry["adress"].get<string>() << "| "
+                 << setw(10) << left << entry["number"].get<string>() << "|\n"; 
+            cout << "Data saved successfully for: " << entry.dump() << endl;
+        } else {
+            cerr << "Could not open data file for saving: " << filename << endl;
+        }
+    }
+
+    void insert(const string& table, json entry) {
+        Node* table_node = findNode(table);
+        if (table_node) {
+            updatePrimaryKey(table);
+
+            entry["id"] = current_pk;
+
+            table_node->data.push_back(entry);
+            cout << "Inserted: " << entry.dump() << endl;
+
+            saveSingleEntryToCSV(table, entry); 
+        } else {
+            cout << "Table not found: " << table << endl;
+        }
+    }
+
+    void deleteRow(const string& column, const string& value, const string& table) {
+        Node* table_node = findNode(table);
+        if (table_node) {
+            json new_data = json::array();
+            bool found = false;
+
+            for (const auto& entry : table_node->data) {
+                if (entry.contains(column) && entry[column].get<string>() == value) {
+                    found = true;
+                    cout << "Deleted row: " << entry.dump() << endl;
+                } else {
+                    new_data.push_back(entry);
+                }
+            }
+
+            if (found) {
+                table_node->data = new_data; 
+                rewriteCSV(table); 
+            } else {
+                cout << "No row found with " << column << " = " << value << " in table " << table << endl;
+            }
+        } else {
+            cout << "Table not found: " << table << endl;
+        }
+    }
+
+    void rewriteCSV(const string& table) {
+        filename = schema_name + "\\" + table + "\\1.csv"; 
+        ofstream file(filename); 
+
+        if (file) {
+            Node* table_node = findNode(table);
+            if (table_node) {
+                json columns = {"name", "age", "adress", "number"};
+
+                for (const auto& column : columns) {
+                    file << "| " << setw(10) << left << column.get<string>() << " ";
+                }
+                file << "|\n"; 
+
+                for (const auto& entry : table_node->data) {
+                    for (const auto& column : columns) {
+                        file << "| " << setw(10) << left << entry[column.get<string>()].get<string>() << " ";
+                    }
+                    file << "|\n"; 
+                }
+            }
+            file.close();
+        } else {
+            cerr << "Could not open data file for rewriting: " << filename << endl;
+        }
+    }
+};
+
+void executeQuery(Database& db, const string& query) {
     istringstream iss(query);
-    string command;
-    iss >> command;
+    string action;
+    iss >> action; 
 
-    // Обработчик команд для всех структур
-    if (command == "MPUSH") {
-        int value;
-        iss >> value; // Изменено на int
-        MPUSH(arr, value);
-    } else if (command == "MDEL") {
-        int index;
-        iss >> index;
-        MDEL(arr, index);
-    } else if (command == "MGET") {
-        int index;
-        iss >> index;
-        cout << "Элемент: " << MGET(arr, index) << endl;
-    } else if (command == "APrint") {
-        APrint(arr);
-    } else if (command == "AReadFromFile") {
-        AReadFromFile(arr);
-    } else if (command == "LPUSH") {
-        int value; // Изменено на int
-        iss >> value;
-        LPUSH(list, value);
-    } else if (command == "LDEL") {
-        int value; // Изменено на int
-        iss >> value;
-        LDEL(list, value);
-    } else if (command == "LGET") {
-        LGET(list);
-    } else if (command == "LReadFromFile") {
-        LReadFromFile(list);
-    } else if (command == "DPUSH") {
-        int value; // Изменено на int
-        iss >> value;
-        DPUSH(dlist, value);
-    } else if (command == "DDEL") {
-        int value; // Изменено на int
-        iss >> value;
-        DDEL(dlist, value);
-    } else if (command == "DGET") {
-        DGET(dlist);
-    } else if (command == "DReadFromFile") {
-        DReadFromFile(dlist);
-    } else if (command == "QPUSH") {
-        int value; // Изменено на int
-        iss >> value;
-        QPUSH(q, value);
-    } else if (command == "QPOP") {
-        QPOP(q);
-    } else if (command == "QPRINT") {
-        QPRINT(q);
-    } else if (command == "QReadFromFile") {
-        QReadFromFile(q);
-    } else if (command == "SPUSH") {
-        int value; // Изменено на int
-        iss >> value;
-        SPUSH(s, value);
-    } else if (command == "SPOP") {
-        SPOP(s);
-    } else if (command == "SPRINT") {
-        SPRINT(s);
-    } else if (command == "SReadFromFile") {
-        SReadFromFile(s);
-    } else if (command == "HSET") {
-        int value; // Изменено на int
-        iss >> value;
-        HTINSERT(ht, value); // Замените на соответствующий метод
-    } else if (command == "HDEL") {
-        int value; // Изменено на int
-        iss >> value;
-        HTDELETE(ht, value);
-    } else if (command == "HPrint") {
-        HTPRINT(ht);
-    } else if (command == "TINSERT") {
-        int value; // Изменено на int
-        iss >> value;
-        BSTINSERT(tree, value); // Исправлено для соответствия типам
-    } else if (command == "TDELETE") {
-        int value; // Изменено на int
-        iss >> value;
-        BSTDELETE(tree, value); // Реализовать функцию удаления
-    } else if (command == "TGET") {
-        BSTPRINT(tree.root); // Изменено для соответствия типам
+    if (action == "INSERT" || action == "insert") {
+        string table, name, adress, number;
+        int age;
+        iss >> table >> name >> age >> adress >> number; 
+        json entry = {{"name", name}, {"age", age}, {"adress", adress}, {"number", number}};
+        db.insert(table, entry); 
+    } else if (action == "SELECT" || action == "select") {
+        string column, from, table;
+        iss >> column >> from >> table; 
+        if (from == "FROM") {
+            pair<string, string> filters[10]; // Заменяем вектор на массив фиксированного размера
+            int filter_count = 0;
+            string filter_part;
+
+            if (iss >> filter_part && filter_part == "WHERE") {
+                string filter_column, filter_value;
+                while (iss >> filter_column) {
+                    string condition;
+                    iss >> condition; 
+                    iss >> filter_value; 
+                    filters[filter_count++] = make_pair(filter_column, filter_value);
+
+                    string connector;
+                    if (!(iss >> connector) || (connector != "AND" && connector != "OR")) {
+                        break;
+                    }
+                }
+            }
+            db.select(column, table, filters, filter_count); 
+        } else {
+            cout << "Invalid query format." << endl;
+        }
+    } else if (action == "DELETE" || action == "delete") {
+        string column, from, value, table;
+        iss >> from >> table >> column >> value; 
+        db.deleteRow(column, value, table); 
     } else {
-        cout << "Неизвестная команда!" << endl;
+        cout << "Unknown command: " << query << endl;
     }
+}
+
+int main(int argc, char* argv[]) {
+    Database db;
+    db.loadSchema("schema.json"); 
+    db.load(); 
+
+    if (argc > 2 && string(argv[1]) == "--query") {
+        string query = argv[2]; 
+        executeQuery(db, query); 
+    } else {
+        cout << "Please provide a query to execute in the format: --query \"<your_query>\"." << endl;
+    }
+
     return 0;
 }
