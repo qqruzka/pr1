@@ -1,12 +1,12 @@
 #include "dbase.h"
+#include <iostream>
+#include <fstream>
+#include <sys/stat.h>
+#include <stdexcept>
 
-// Конструктор узла
-Node::Node(const string& name) : name(name), next(nullptr) {}
 
-// Конструктор базы данных
-dbase::dbase() : head(nullptr), current_pk(0) {}
+using namespace std;
 
-// Деструктор базы данных
 dbase::~dbase() {
     while (head) {
         Node* temp = head;
@@ -15,13 +15,12 @@ dbase::~dbase() {
     }
 }
 
-// Блокировка первичного ключа
-void dbase::lockPrimaryKey() {
+void lockPrimaryKey(dbase& db) {
     try {
-        string pk_filename = schema_name + "\\table_pk_sequence.txt";
+        string pk_filename = db.schema_name + "/table_pk_sequence.txt";
         ofstream pk_file(pk_filename);
         if (pk_file) {
-            pk_file << current_pk << "\nlocked";
+            pk_file << db.current_pk << "\nlocked";
         } else {
             throw runtime_error("Failed to lock primary key file: " + pk_filename);
         }
@@ -30,13 +29,12 @@ void dbase::lockPrimaryKey() {
     }
 }
 
-// Разблокировка первичного ключа
-void dbase::unlockPrimaryKey() {
+void unlockPrimaryKey(dbase& db) {
     try {
-        string pk_filename = schema_name + "\\table_pk_sequence.txt";
+        string pk_filename = db.schema_name + "/table_pk_sequence.txt";
         ofstream pk_file(pk_filename);
         if (pk_file) {
-            pk_file << current_pk << "\nunlocked";
+            pk_file << db.current_pk << "\nunlocked";
         } else {
             throw runtime_error("Failed to unlock primary key file: " + pk_filename);
         }
@@ -45,39 +43,18 @@ void dbase::unlockPrimaryKey() {
     }
 }
 
-// Загрузка схемы
-void dbase::loadSchema(const string& schema_file) {
+void initializePrimaryKey(dbase& db) {
     try {
-        ifstream file(schema_file);
-        if (file) {
-            json schema;
-            file >> schema;
-            schema_name = schema["name"];
-            createDirectories(schema["structure"]);
-            for (const auto& table : schema["structure"].items()) {
-                addNode(table.key());
-            }
-        } else {
-            throw runtime_error("Failed to open schema file.");
-        }
-    } catch (const exception& e) {
-        cout << "Error: " << e.what() << endl;
-    }
-}
-
-// Инициализация первичного ключа
-void dbase::initializePrimaryKey() {
-    try {
-        string pk_filename = schema_name + "\\table_pk_sequence.txt";
+        string pk_filename = db.schema_name + "/table_pk_sequence.txt";
         ifstream pk_file(pk_filename);
         
         if (pk_file) {
-            pk_file >> current_pk;
+            pk_file >> db.current_pk;
         } else {
-            current_pk = 0;
+            db.current_pk = 0;
             ofstream pk_file_out(pk_filename);
             if (pk_file_out) {
-                pk_file_out << current_pk << "\nunlocked";
+                pk_file_out << db.current_pk << "\nunlocked";
             } else {
                 throw runtime_error("Failed to create file: " + pk_filename);
             }
@@ -87,60 +64,16 @@ void dbase::initializePrimaryKey() {
     }
 }
 
-// Обновление первичного ключа
-void dbase::updatePrimaryKey() {
+void createDirectories(dbase& db, const json& structure) {
     try {
-        string pk_filename = schema_name + "\\table_pk_sequence.txt";
-
-        ifstream pk_file(pk_filename);
-        if (pk_file) {
-            pk_file >> current_pk;
-        } else {
-            current_pk = 0;
-        }
-        pk_file.close();
-
-        current_pk++;
-
-        ofstream pk_file_out(pk_filename);
-        if (pk_file_out) {
-            pk_file_out << current_pk << "\nlocked";
-        } else {
-            throw runtime_error("Failed to open file for updating: " + pk_filename);
-        }
-    } catch (const exception& e) {
-        cout << "Error: " << e.what() << endl;
-    }
-}
-
-// Получение количества колонок в таблице
-size_t dbase::getColumnCount(const string& table) {
-    Node* table_node = findNode(table);
-    if (table_node) {
-        string filename = schema_name + "\\" + table + "\\1.csv";
-        ifstream file(filename);
-        if (file) {
-            string header;
-            if (getline(file, header)) {
-                size_t comma_count = std::count(header.begin(), header.end(), ',');
-                return comma_count + 1; // Количество колонок = количество запятых + 1
-            }
-        }
-    }
-    return 0; 
-}
-
-// Создание директорий для таблиц
-void dbase::createDirectories(const json& structure) {
-    try {
-        _mkdir(schema_name.c_str());
+        mkdir(db.schema_name.c_str(), 0777); // Для Linux
 
         for (const auto& table : structure.items()) {
             string table_name = table.key();
-            string table_path = schema_name + "\\" + table_name;
+            string table_path = db.schema_name + "/" + table_name;
 
-            _mkdir(table_path.c_str());
-            filename = table_path + "\\1.csv";
+            mkdir(table_path.c_str(), 0777); // Права доступа для Linux
+            string filename = table_path + "/1.csv";
 
             ifstream check_file(filename);
             if (!check_file) {
@@ -155,23 +88,64 @@ void dbase::createDirectories(const json& structure) {
                 }
             }
 
-            initializePrimaryKey();
+            initializePrimaryKey(db);
         }
     } catch (const exception& e) {
         cout << "Error: " << e.what() << endl;
     }
 }
 
-// Добавление узла в список таблиц
-void dbase::addNode(const string& table_name) {
+void addNode(dbase& db, const string& table_name) {
     Node* new_node = new Node(table_name);
-    new_node->next = head;
-    head = new_node;
+    new_node->next = db.head;
+    db.head = new_node;
 }
 
-// Поиск узла по имени таблицы
-Node* dbase::findNode(const string& table_name) {
-    Node* current = head;
+void loadSchema(dbase& db, const string& schema_file) {
+    try {
+        ifstream file(schema_file);
+        if (file) {
+            json schema;
+            file >> schema;
+            db.schema_name = schema["name"];
+            createDirectories(db, schema["structure"]);
+            for (const auto& table : schema["structure"].items()) {
+                addNode(db, table.key());
+            }
+        } else {
+            throw runtime_error("Failed to open schema file.");
+        }
+    } catch (const exception& e) {
+        cout << "Error: " << e.what() << endl;
+    }
+}
+
+void updatePrimaryKey(dbase& db) {
+    try {
+        string pk_filename = db.schema_name + "/table_pk_sequence.txt";
+        ifstream pk_file(pk_filename);
+        if (pk_file) {
+            pk_file >> db.current_pk;
+        } else {
+            db.current_pk = 0;
+        }
+        pk_file.close();
+
+        db.current_pk++;
+
+        ofstream pk_file_out(pk_filename);
+        if (pk_file_out) {
+            pk_file_out << db.current_pk << "\nlocked";
+        } else {
+            throw runtime_error("Failed to open file for updating: " + pk_filename);
+        }
+    } catch (const exception& e) {
+        cout << "Error: " << e.what() << endl;
+    }
+}
+
+Node* findNode(dbase& db, const string& table_name) {
+    Node* current = db.head;
     while (current) {
         if (current->name == table_name) {
             return current;
@@ -181,12 +155,27 @@ Node* dbase::findNode(const string& table_name) {
     return nullptr;
 }
 
-// Загрузка данных из CSV файлов
-void dbase::load() {
-    Node* current = head;
+size_t getColumnCount(dbase& db, const string& table) {
+    Node* table_node = findNode(db, table);
+    if (table_node) {
+        string filename = db.schema_name + "/" + table + "/1.csv";
+        ifstream file(filename);
+        if (file) {
+            string header;
+            if (getline(file, header)) {
+                size_t comma_count = std::count(header.begin(), header.end(), ',');
+                return comma_count + 1; // Количество колонок = количество запятых + 1
+            }
+        }
+    }
+    return 0; 
+}
+
+void load(dbase& db) {
+    Node* current = db.head;
     while (current) {
         try {
-            filename = schema_name + "\\" + current->name + "\\1.csv"; 
+            string filename = db.schema_name + "/" + current->name + "/1.csv"; 
             ifstream file(filename);
             if (file) {
                 string line;
@@ -232,8 +221,7 @@ void dbase::load() {
     }
 }
 
-// Применение фильтров AND
-bool dbase::applyAndFilters(const json& entry, const pair<string, string> filters[], int filter_count) {
+bool applyAndFilters(const json& entry, const pair<string, string> filters[], int filter_count) {
     for (int i = 0; i < filter_count; ++i) {
         const string& filter_column = filters[i].first;
         const string& filter_value = filters[i].second;
@@ -245,8 +233,7 @@ bool dbase::applyAndFilters(const json& entry, const pair<string, string> filter
     return true;
 }
 
-// Применение фильтров OR
-bool dbase::applyOrFilters(const json& entry, const pair<string, string> filters[], int filter_count) {
+bool applyOrFilters(const json& entry, const pair<string, string> filters[], int filter_count) {
     for (int i = 0; i < filter_count; ++i) {
         const string& filter_column = filters[i].first;
         const string& filter_value = filters[i].second;
@@ -258,9 +245,8 @@ bool dbase::applyOrFilters(const json& entry, const pair<string, string> filters
     return false;
 }
 
-// Выбор данных из таблицы
-void dbase::select(const string& column, const string& table, const pair<string, string> filters[], int filter_count, const string& filter_type) {
-    Node* table_node = findNode(table);
+void select(dbase& db, const string& column, const string& table, const pair<string, string> filters[], int filter_count, const string& filter_type) {
+    Node* table_node = findNode(db, table);
     if (table_node) {
         bool data_found = false;
         for (size_t i = 0; i < table_node->data.getSize(); ++i) {
@@ -277,9 +263,9 @@ void dbase::select(const string& column, const string& table, const pair<string,
                 data_found = true;
                 if (column == "all") {
                     cout << "Data from table " << table << ": ";
-                    cout << entry["name"].get<string>() << ", "
-                         << entry["age"].get<int>() << ", "
-                         << entry["adress"].get<string>() << ", "
+                    cout << entry["name"].get<string>() << "| "
+                         << entry["age"].get<int>() << "| "
+                         << entry["adress"].get<string>() << "| "
                          << entry["number"].get<string>() << endl;
                 } else if (entry.contains(column)) {
                     cout << "Data from " << column << " in " << table << ": ";
@@ -297,17 +283,16 @@ void dbase::select(const string& column, const string& table, const pair<string,
     }
 }
 
-// Сохранение одной записи в CSV
-void dbase::saveSingleEntryToCSV(const string& table, const json& entry) {
+void saveSingleEntryToCSV(dbase& db, const string& table, const json& entry) {
     try {
-        string filename = schema_name + "\\" + table + "\\1.csv"; 
+        string filename = db.schema_name + "/" + table + "/1.csv"; 
         ofstream file(filename, ios::app);
         if (file) {
             if (entry.contains("name") && entry.contains("age")) {
                 file << setw(10) << left << entry["name"].get<string>() << ", "
                      << setw(10) << left << entry["age"];
 
-                if (getColumnCount(table) > 2) {
+                if (getColumnCount(db, table) > 2) {
                     file << ", " << setw(10) << left << entry["adress"].get<string>() << ", ";
                     file << setw(10) << left << entry["number"].get<string>();
                 }
@@ -325,58 +310,28 @@ void dbase::saveSingleEntryToCSV(const string& table, const json& entry) {
     }
 }
 
-// Вставка записи в таблицу
-void dbase::insert(const string& table, json entry) {
-    Node* table_node = findNode(table);
+void insert(dbase& db, const string& table, json entry) {
+    Node* table_node = findNode(db, table);
     if (table_node) {
-        updatePrimaryKey(); 
-        entry["id"] = current_pk; 
+        updatePrimaryKey(db); 
+        entry["id"] = db.current_pk; 
 
         table_node->data.addEnd(entry.dump());
         cout << "Inserted: " << entry.dump() << endl;
 
-        saveSingleEntryToCSV(table, entry);
+        saveSingleEntryToCSV(db, table, entry);
     } else {
         cout << "Table not found: " << table << endl;
     }
 }
 
-// Удаление строки из таблицы
-void dbase::deleteRow(const string& column, const string& value, const string& table) {
-    Node* table_node = findNode(table);
-    if (table_node) {
-        Array new_data;
-        bool found = false;
-
-        for (size_t i = 0; i < table_node->data.getSize(); ++i) {
-            json entry = json::parse(table_node->data.get(i));
-            if (entry.contains(column) && entry[column].get<string>() == value) {
-                found = true;
-                cout << "Deleted row: " << entry.dump() << endl;
-            } else {
-                new_data.addEnd(table_node->data.get(i));
-            }
-        }
-
-        if (found) {
-            table_node->data = new_data;
-            rewriteCSV(table);
-        } else {
-            cout << "Row with " << column << " = " << value << " not found in table " << table << endl;
-        }
-    } else {
-        cout << "Table not found: " << table << endl;
-    }
-}
-
-// Перезапись CSV файла
-void dbase::rewriteCSV(const string& table) {
+void rewriteCSV(dbase& db, const string& table) {
     try {
-        filename = schema_name + "\\" + table + "\\1.csv"; 
+        string filename = db.schema_name + "/" + table + "/1.csv"; 
         ofstream file(filename); 
 
         if (file) {
-            Node* table_node = findNode(table);
+            Node* table_node = findNode(db, table);
             if (table_node) {
                 json columns = {"name", "age", "adress", "number"};
 
@@ -402,7 +357,33 @@ void dbase::rewriteCSV(const string& table) {
     }
 }
 
-// Изменение функции executeQuery для поддержки фильтрации с AND и OR
+void deleteRow(dbase& db, const string& column, const string& value, const string& table) {
+    Node* table_node = findNode(db, table);
+    if (table_node) {
+        Array new_data;
+        bool found = false;
+
+        for (size_t i = 0; i < table_node->data.getSize(); ++i) {
+            json entry = json::parse(table_node->data.get(i));
+            if (entry.contains(column) && entry[column].get<string>() == value) {
+                found = true;
+                cout << "Deleted row: " << entry.dump() << endl;
+            } else {
+                new_data.addEnd(table_node->data.get(i));
+            }
+        }
+
+        if (found) {
+            table_node->data = new_data;
+            rewriteCSV(db, table);
+        } else {
+            cout << "Row with " << column << " = " << value << " not found in table " << table << endl;
+        }
+    } else {
+        cout << "Table not found: " << table << endl;
+    }
+}
+
 void executeQuery(dbase& db, const string& query) {
     istringstream iss(query);
     string action;
@@ -413,40 +394,37 @@ void executeQuery(dbase& db, const string& query) {
             string table;
             iss >> table;
 
-            vector<string> args;
+            Array args;
             string arg;
 
             while (iss >> arg) {
-                args.push_back(arg);
+                args.addEnd(arg);
             }
 
-            size_t expected_arg_count = db.getColumnCount(table);
-            if (args.size() > expected_arg_count) {
-                cout << "Error: Too many arguments (" << args.size() << ") for INSERT command." << endl;
-                return;
-            } else if (args.size() < 2) {
-                cout << "Error: Not enough arguments (" << args.size() << ") for INSERT command." << endl;
+            size_t expected_arg_count = 4; // Для простоты, можно использовать это значение или вычислить через getColumnCount()
+            if (args.getSize() > expected_arg_count) {
+                cout << "Error: Too many arguments (" << args.getSize() << ") for INSERT command." << endl;
                 return;
             }
 
             json entry = {
-                {"name", args[0]},
-                {"age", stoi(args[1])}
+                {"name", args.get(0)},
+                {"age", stoi(args.get(1))}
             };
 
-            if (args.size() > 2) {
-                entry["adress"] = args[2];
+            if (args.getSize() > 2) {
+                entry["adress"] = args.get(2);
             } else {
-                entry["adress"] = "";
+                entry["adress"] = ""; // Значение по умолчанию
             }
 
-            if (args.size() > 3) {
-                entry["number"] = args[3];
+            if (args.getSize() > 3) {
+                entry["number"] = args.get(3);
             } else {
-                entry["number"] = "";
+                entry["number"] = ""; // Значение по умолчанию
             }
 
-            db.insert(table, entry);
+            insert(db, table, entry);
         } else if (action == "SELECT") {
             string column, from, table, filter_type = "AND";
             iss >> column >> from >> table;
@@ -456,7 +434,8 @@ void executeQuery(dbase& db, const string& query) {
                 string filter_part;
 
                 if (iss >> filter_part && filter_part == "WHERE") {
-                    string filter_column, filter_value;
+                    string filter_column;
+                    string filter_value;
                     while (iss >> filter_column) {
                         string condition;
                         iss >> condition;
@@ -464,22 +443,23 @@ void executeQuery(dbase& db, const string& query) {
                         filters[filter_count++] = make_pair(filter_column, filter_value);
 
                         string connector;
-                        iss >> connector;
-                        if (connector == "OR") {
-                            filter_type = "OR";
-                        } else if (connector != "AND") {
-                            break;
+                        if (iss >> connector) {
+                            if (connector == "OR") {
+                                filter_type = "OR";
+                            } else if (connector != "AND") {
+                                break; // Прекратить чтение фильтров при некорректном соединителе
+                            }
                         }
                     }
                 }
-                db.select(column, table, filters, filter_count, filter_type);
+                select(db, column, table, filters, filter_count, filter_type);
             } else {
                 throw runtime_error("Invalid query format.");
             }
         } else if (action == "DELETE") {
             string column, from, value, table;
             iss >> from >> table >> column >> value;
-            db.deleteRow(column, value, table);
+            deleteRow(db, column, value, table);
         } else {
             throw runtime_error("Unknown command: " + query);
         }
