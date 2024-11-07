@@ -3,7 +3,7 @@
 #include <fstream>
 #include <sys/stat.h>
 #include <stdexcept>
-
+#include "pair.h"
 
 using namespace std;
 
@@ -221,7 +221,7 @@ void load(dbase& db) {
     }
 }
 
-bool applyAndFilters(const json& entry, const pair<string, string> filters[], int filter_count) {
+bool applyAndFilters(const json& entry, const MyPair<string, string> filters[], int filter_count) {
     for (int i = 0; i < filter_count; ++i) {
         const string& filter_column = filters[i].first;
         const string& filter_value = filters[i].second;
@@ -233,7 +233,7 @@ bool applyAndFilters(const json& entry, const pair<string, string> filters[], in
     return true;
 }
 
-bool applyOrFilters(const json& entry, const pair<string, string> filters[], int filter_count) {
+bool applyOrFilters(const json& entry, const MyPair<string, string> filters[], int filter_count) {
     for (int i = 0; i < filter_count; ++i) {
         const string& filter_column = filters[i].first;
         const string& filter_value = filters[i].second;
@@ -245,7 +245,7 @@ bool applyOrFilters(const json& entry, const pair<string, string> filters[], int
     return false;
 }
 
-void select(dbase& db, const string& column, const string& table, const pair<string, string> filters[], int filter_count, const string& filter_type) {
+void select(dbase& db, const string& column, const string& table, const MyPair<string, string> filters[], int filter_count, const string& filter_type) {
     Node* table_node = findNode(db, table);
     if (table_node) {
         bool data_found = false;
@@ -263,10 +263,7 @@ void select(dbase& db, const string& column, const string& table, const pair<str
                 data_found = true;
                 if (column == "all") {
                     cout << "Data from table " << table << ": ";
-                    cout << entry["name"].get<string>() << "| "
-                         << entry["age"].get<int>() << "| "
-                         << entry["adress"].get<string>() << "| "
-                         << entry["number"].get<string>() << endl;
+                    cout << entry["name"].get<string>() << "| "<< entry["age"].get<int>() << "| "<< entry["adress"].get<string>() << "| "<< entry["number"].get<string>() << endl;
                 } else if (entry.contains(column)) {
                     cout << "Data from " << column << " in " << table << ": ";
                     cout << entry[column].get<string>() << endl;
@@ -429,7 +426,7 @@ void executeQuery(dbase& db, const string& query) {
             string column, from, table, filter_type = "AND";
             iss >> column >> from >> table;
             if (from == "FROM") {
-                pair<string, string> filters[10];
+                MyPair<string, string> filters[10];
                 int filter_count = 0;
                 string filter_part;
 
@@ -440,7 +437,7 @@ void executeQuery(dbase& db, const string& query) {
                         string condition;
                         iss >> condition;
                         iss >> filter_value;
-                        filters[filter_count++] = make_pair(filter_column, filter_value);
+                        filters[filter_count++] = MyPair<string, string>(filter_column, filter_value);
 
                         string connector;
                         if (iss >> connector) {
