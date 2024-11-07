@@ -4,7 +4,7 @@
 #include <string>
 #include "Array.h"
 #include "json.hpp"
-
+#include "pair.h"
 using namespace std;
 using json = nlohmann::json;
 
@@ -39,9 +39,9 @@ void updatePrimaryKey(dbase& db);
 Node* findNode(dbase& db, const string& table_name);
 size_t getColumnCount(dbase& db, const string& table);
 void load(dbase& db);
-bool applyAndFilters(const json& entry, const pair<string, string> filters[], int filter_count);
-bool applyOrFilters(const json& entry, const pair<string, string> filters[], int filter_count);
-void select(dbase& db, const string& column, const string& table, const pair<string, string> filters[], int filter_count, const string& filter_type);
+bool applyAndFilters(const json& entry, const MyPair<string, string> filters[], int filter_count);
+bool applyOrFilters(const json& entry, const MyPair<string, string> filters[], int filter_count);
+void select(dbase& db, const string& column, const string& table, const MyPair<string, string> filters[], int filter_count, const string& filter_type);
 void saveSingleEntryToCSV(dbase& db, const string& table, const json& entry);
 void insert(dbase& db, const string& table, json entry);
 void rewriteCSV(dbase& db, const string& table);
